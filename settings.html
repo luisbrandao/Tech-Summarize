@@ -1,0 +1,184 @@
+<div id="ts_settings">
+    <div class="inline-drawer">
+        <div class="inline-drawer-toggle inline-drawer-header">
+            <div class="flex-container alignitemscenter margin0">
+                <b>Tech-Summarize</b>
+                <i id="tsExtensionPopoutButton" class="fa-solid fa-window-restore menu_button margin0"></i>
+            </div>
+            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+        </div>
+        <div class="inline-drawer-content">
+            <div id="tsExtensionDrawerContents">
+
+                <!-- Global controls row -->
+                <div class="ts_contents_controls">
+                    <div id="ts_force_summarize_all" class="menu_button menu_button_icon" title="Summarize all sections now.">
+                        <i class="fa-solid fa-database"></i>
+                        <span>Summarize All</span>
+                    </div>
+                    <label for="ts_skipWIAN" title="Omit World Info and Author's Note from text to be summarized.">
+                        <input id="ts_skipWIAN" type="checkbox" />
+                        <span>No WI/AN</span>
+                    </label>
+                </div>
+
+                <!-- Section: Characters -->
+                <div class="ts_section_block">
+                    <div class="ts_section_header">
+                        <b>Characters</b>
+                        <div class="ts_section_header_buttons">
+                            <div id="ts_section_content_restore_characters" class="menu_button menu_button_icon margin0" title="Restore previous Characters summary">
+                                <i class="fa-solid fa-clock-rotate-left"></i>
+                            </div>
+                            <div id="ts_force_summarize_characters" class="menu_button menu_button_icon margin0" title="Summarize Characters now">
+                                <i class="fa-solid fa-database"></i>
+                            </div>
+                            <div id="ts_section_settings_toggle_characters" class="menu_button menu_button_icon margin0" title="Section settings">
+                                <i class="fa-solid fa-cog"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <textarea id="ts_section_content_characters" class="text_pole textarea_compact" rows="4" placeholder="Characters summary will appear here..."></textarea>
+                    <div id="ts_section_settings_characters" class="ts_section_settings" style="display:none;">
+                        <label for="ts_section_prompt_characters" class="title_restorable">
+                            <span>Characters Prompt</span>
+                            <div id="ts_section_prompt_restore_characters" title="Restore default prompt" class="right_menu_button">
+                                <div class="fa-solid fa-clock-rotate-left"></div>
+                            </div>
+                        </label>
+                        <textarea id="ts_section_prompt_characters" class="text_pole textarea_compact" rows="4" placeholder="Prompt for character summarization..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Section: Events & Plot -->
+                <div class="ts_section_block">
+                    <div class="ts_section_header">
+                        <b>Events &amp; Plot</b>
+                        <div class="ts_section_header_buttons">
+                            <div id="ts_section_content_restore_body" class="menu_button menu_button_icon margin0" title="Restore previous Events & Plot summary">
+                                <i class="fa-solid fa-clock-rotate-left"></i>
+                            </div>
+                            <div id="ts_force_summarize_body" class="menu_button menu_button_icon margin0" title="Summarize Events & Plot now">
+                                <i class="fa-solid fa-database"></i>
+                            </div>
+                            <div id="ts_section_settings_toggle_body" class="menu_button menu_button_icon margin0" title="Section settings">
+                                <i class="fa-solid fa-cog"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <textarea id="ts_section_content_body" class="text_pole textarea_compact" rows="4" placeholder="Events & plot summary will appear here..."></textarea>
+                    <div id="ts_section_settings_body" class="ts_section_settings" style="display:none;">
+                        <label for="ts_section_prompt_body" class="title_restorable">
+                            <span>Events &amp; Plot Prompt</span>
+                            <div id="ts_section_prompt_restore_body" title="Restore default prompt" class="right_menu_button">
+                                <div class="fa-solid fa-clock-rotate-left"></div>
+                            </div>
+                        </label>
+                        <textarea id="ts_section_prompt_body" class="text_pole textarea_compact" rows="4" placeholder="Prompt for event summarization..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Section: World & Lore -->
+                <div class="ts_section_block">
+                    <div class="ts_section_header">
+                        <b>World &amp; Lore</b>
+                        <div class="ts_section_header_buttons">
+                            <div id="ts_section_content_restore_lore" class="menu_button menu_button_icon margin0" title="Restore previous World & Lore summary">
+                                <i class="fa-solid fa-clock-rotate-left"></i>
+                            </div>
+                            <div id="ts_force_summarize_lore" class="menu_button menu_button_icon margin0" title="Summarize World & Lore now">
+                                <i class="fa-solid fa-database"></i>
+                            </div>
+                            <div id="ts_section_settings_toggle_lore" class="menu_button menu_button_icon margin0" title="Section settings">
+                                <i class="fa-solid fa-cog"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <textarea id="ts_section_content_lore" class="text_pole textarea_compact" rows="4" placeholder="World & lore summary will appear here..."></textarea>
+                    <div id="ts_section_settings_lore" class="ts_section_settings" style="display:none;">
+                        <label for="ts_section_prompt_lore" class="title_restorable">
+                            <span>World &amp; Lore Prompt</span>
+                            <div id="ts_section_prompt_restore_lore" title="Restore default prompt" class="right_menu_button">
+                                <div class="fa-solid fa-clock-rotate-left"></div>
+                            </div>
+                        </label>
+                        <textarea id="ts_section_prompt_lore" class="text_pole textarea_compact" rows="4" placeholder="Prompt for lore summarization..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Global settings toggle -->
+                <div class="ts_contents_controls">
+                    <div id="tsSettingsBlockToggle" class="menu_button menu_button_icon" title="Edit injection template, position, prompt builder, etc.">
+                        <i class="fa-solid fa-cog"></i>
+                        <span>Summary Settings</span>
+                    </div>
+                </div>
+                <div id="tsSettingsBlock" style="display:none;">
+                    <div>
+                        <label>
+                            Prompt builder
+                        </label>
+                        <label class="checkbox_label" for="ts_prompt_builder_raw_blocking" title="Extension will build its own prompt using messages that were not summarized yet. Blocks the chat until the summary is generated.">
+                            <input id="ts_prompt_builder_raw_blocking" type="radio" name="ts_prompt_builder" value="1" />
+                            <span>Raw, blocking</span>
+                        </label>
+                        <label class="checkbox_label" for="ts_prompt_builder_raw_non_blocking" title="Extension will build its own prompt using messages that were not summarized yet. Does not block the chat while the summary is being generated.">
+                            <input id="ts_prompt_builder_raw_non_blocking" type="radio" name="ts_prompt_builder" value="2" />
+                            <span>Raw, non-blocking</span>
+                        </label>
+                        <label class="checkbox_label" id="ts_prompt_builder_default" title="Extension will use the regular main prompt builder and add the summary request as the last system message.">
+                            <input id="ts_prompt_builder_default" type="radio" name="ts_prompt_builder" value="0" />
+                            <span>Classic, blocking</span>
+                        </label>
+                    </div>
+                    <div>
+                        <label for="ts_override_response_length">
+                            <span>API response length</span> (<span id="ts_override_response_length_value"></span> tokens)
+                            <small class="ts_disabled_hint">0 = default</small>
+                        </label>
+                        <input id="ts_override_response_length" type="range" value="{{defaultSettings.overrideResponseLength}}" min="{{defaultSettings.overrideResponseLengthMin}}" max="{{defaultSettings.overrideResponseLengthMax}}" step="{{defaultSettings.overrideResponseLengthStep}}" />
+                        <label for="ts_max_messages_per_request">
+                            <span>[Raw] Max messages per request</span> (<span id="ts_max_messages_per_request_value"></span>)
+                            <small class="ts_disabled_hint">0 = unlimited</small>
+                        </label>
+                        <input id="ts_max_messages_per_request" type="range" value="{{defaultSettings.maxMessagesPerRequest}}" min="{{defaultSettings.maxMessagesPerRequestMin}}" max="{{defaultSettings.maxMessagesPerRequestMax}}" step="{{defaultSettings.maxMessagesPerRequestStep}}" />
+                    </div>
+                    <div class="ts_template">
+                        <label for="ts_template">Injection Template</label>
+                        <textarea id="ts_template" class="text_pole textarea_compact" rows="3" placeholder="Use {{summary_characters}}, {{summary_body}}, {{summary_lore}} to insert section contents. {{summary}} inserts all combined."></textarea>
+                    </div>
+                    <label for="ts_position">Injection Position</label>
+                    <label class="checkbox_label" for="ts_include_wi_scan" title="Include the latest summary in the WI scan.">
+                        <input id="ts_include_wi_scan" type="checkbox" />
+                        <span>Include in World Info Scanning</span>
+                    </label>
+                    <div class="radio_group">
+                        <label>
+                            <input type="radio" name="ts_position" value="-1" />
+                            <span>None (not injected)</span>
+                            <i class="fa-solid fa-info-circle" title="The summary will not be injected into the prompt. You can still access it via macros."></i>
+                        </label>
+                        <label>
+                            <input type="radio" name="ts_position" value="2" />
+                            <span>Before Main Prompt / Story String</span>
+                        </label>
+                        <label>
+                            <input type="radio" name="ts_position" value="0" />
+                            <span>After Main Prompt / Story String</span>
+                        </label>
+                        <label class="flex-container alignItemsCenter" title="How many messages before the current end of the chat.">
+                            <input type="radio" name="ts_position" value="1" />
+                            <span>In-chat @ Depth</span> <input id="ts_depth" class="text_pole widthUnset" type="number" min="0" max="9999" />
+                            <span>as</span>
+                            <select id="ts_role" class="text_pole widthNatural">
+                                <option value="0">System</option>
+                                <option value="1">User</option>
+                                <option value="2">Assistant</option>
+                            </select>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

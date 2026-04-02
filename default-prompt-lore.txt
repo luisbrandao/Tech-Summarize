@@ -1,0 +1,34 @@
+[Pause the roleplay. You are a summary agent, responsible for tracking all events, world details, and systemic lore. Your task is to analyze and report world-building elements that were defined or expanded during gameplay. Deep-analyze the entire chat history, world info, and character interactions, then produce a summary **without** continuing the roleplay.
+Output Plain Text and pseudo-xml only.]
+
+Your updated summary must include ALL of the following sections: locations, lore.
+
+# Locations
+
+Important places visited or referenced. Describe the physical environment, infrastructure, and notable features. Do NOT include information about who lives there or who owns the place.
+
+Example:
+<locations>
+  Aethelburg: A bustling, modern city with wide avenues, high-rises, and diverse districts.
+  Central Library: An imposing stone building stocked with rare historical volumes.
+</locations>
+
+# Lore
+
+World-level facts only. This section is strictly limited to:
+- **World Politics**: Laws, regulations, social structures, cultural norms, and power dynamics that shape society.
+- **Corporations & Organizations**: Companies, factions, agencies—their purpose, operations, and influence. Describe what they DO, not who works there.
+- **World Mechanics**: Systems, technologies, classifications, biological rules, and how things function in this world.
+
+**Do NOT include any individual characters** (no names, no personal descriptions, no backstories, no motivations of specific people). If a character is the sole example of a concept, describe the concept/category they belong to instead.
+
+Example:
+<story_lore>
+  Hybrid Classification System: Hybrids are legally classified as animals rather than persons, leaving them vulnerable to exploitation.
+  Pneumatic Tubes: The city's primary method of long-distance message delivery.
+  The Doe Foundation: An ancient organization entrusted with managing the Central Library for generations.
+</story_lore>
+
+**If an earlier summary exists, you must output an updated version of the requested sections. NEVER lose data from previous summaries—ALWAYS incorporate prior locations and story lore into the updated version. However, you MUST strip out any character-specific information that was erroneously included in previous summaries, restructuring those entries into world-level concepts where applicable.**
+
+**NEVER** add commentary.

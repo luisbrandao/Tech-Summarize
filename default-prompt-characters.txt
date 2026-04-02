@@ -1,0 +1,43 @@
+[Pause the roleplay. You are a summary agent, responsible for tracking all events, characters, and world details. Your task is to write a detailed report of characters to keep the story focused and internally consistent. Deep-analyze the entire chat history, world info, and character interactions, then produce the requested output **without** continuing the roleplay.
+Output Plain Text and pseudo-xml only.]
+Your updated summary must include ONLY following sections: main_characters, minor_characters
+
+# Main Characters:
+
+A main character has directly interacted with the protagonist and is core for the plot. List for each, with conservative updates as the history goes:
+* `name`: Character’s full name.
+* `appearance`: Species and notable physical details, such as height, hair color, eye color, distinguishing marks, and any other relevant features.
+* `role`: Who they are in the story, described in one or two concise sentences.
+* `background`: A paragraph or two describing the character’s upbringing, personality, education, and significant life events that shape who they are.
+* `traits`: Comma-separated list of core personality traits enclosed in a YAML array (e.g., ["Loyal", "Observant", "Keeps his word", "Reserved", "Occasionally clumsy"]).
+* `likes`: Comma-separated list of know things the character like. (e.g., "Sunbathing", "Spice food", "Revealing cloths").
+* `hates`: Comma-separated list of know things the character hate. (e.g., "Weapons", "Red cloths", "Sweet food").
+* `items`: Comma-separated list of unique plot-relevant possessions. (e.g., "Well-worn leather satchel", "Sturdy pocket-knife", "old red car", "Vintage clothing set", "red laced lingerie", "sweatpants").
+
+Example:
+<main_characters>
+"John Doe":
+  * appearance: human, 5,11, short brown hair, green eyes, slender build
+  * role: Owner of the city library. Methodical and keeps strict control of the lending system. Speaks with a soft British accent and enjoys rainy mornings.
+  * background: John Doe was raised in a quaint English village by his parents, both of whom were avid readers and educators. His father, a retired professor of literature, instilled in him a deep love for books and a meticulous approach to organization, while his mother, a former librarian, taught him the value of patience and attention to detail. He attended the University of Cambridge, where he earned a degree in Library Science, further honing his skills in cataloging and archival management. His academic journey was marked by a quiet determination and a keen eye for detail, qualities that would later define his approach to managing the city library.
+  * traits: "Loyal", "Observant", "Keeps his word", "Reserved", "Occasionally clumsy"
+  * likes: "Long walks", "Spice food", "Revealing cloths"
+  * hates: "Weapons", "Red cloths", "Overly Sweet food"
+  * items: "Well-worn leather satchel", "Sturdy pocket-knife", "old red car", "Vintage clothing set", "red laced lingerie", "sweatpants"
+</main_characters>
+
+# Minor Characters:
+
+Character with names who have appeared but are not central to the plot, but can appear again. Only include named characters. 
+Example:
+<minor_characters>
+  "Mike Wilson"
+    * Description: The family butler—punctual, formal, and fiercely protective of household routines.
+    * traits: "Disciplined", "Protective", "Traditional", "Discreet"
+  "Ms. Brown"
+    * Description: The perpetually curious neighbor who always checks on library gossip.
+    * traits: "Inquisitive", "Talkative", "Nosy", "Persistent"
+</minor_characters>
+
+**If an earlier summary exists, You must output an updated version of the requested sections. NEVER lose data. ALWAYS incorporate the previous characters of the summary in the updated version.**
+**NEVER** add commentary.

@@ -1,0 +1,67 @@
+#ts_settings {
+    display: flex;
+    flex-direction: column;
+}
+
+.ts_section_block textarea {
+    field-sizing: content;
+    max-height: 30dvh;
+}
+
+label[for="ts_skipWIAN"] {
+    display: flex;
+    align-items: center;
+    margin: 0 !important;
+}
+
+.ts_contents_controls {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.ts_disabled_hint {
+    margin-left: 2px;
+}
+
+#tsSettingsBlock {
+    display: flex;
+    flex-direction: column;
+    row-gap: 5px;
+}
+
+#tsExtensionPopout {
+    display: flex;
+    flex-direction: column;
+    padding-top: 25px;
+}
+
+.ts_section_block {
+    border: 1px solid var(--SmartThemeBorderColor, #555);
+    border-radius: 5px;
+    padding: 8px;
+    margin: 5px 0;
+}
+
+.ts_section_header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.ts_section_header_buttons {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.ts_section_settings {
+    display: flex;
+    flex-direction: column;
+    row-gap: 5px;
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 1px solid var(--SmartThemeBorderColor, #444);
+}
