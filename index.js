@@ -1,5 +1,5 @@
-import { debounce, isTrueBoolean } from '../../utils.js';
-import { getContext, extension_settings, renderExtensionTemplateAsync } from '../../extensions.js';
+import { debounce, isTrueBoolean } from '../../../utils.js';
+import { getContext, extension_settings, renderExtensionTemplateAsync } from '../../../extensions.js';
 import {
     activateSendButtons,
     deactivateSendButtons,
@@ -15,17 +15,17 @@ import {
     getMaxPromptTokens,
     setExtensionPrompt,
     animation_easing,
-} from '../../../script.js';
-import { loadMovingUIState, power_user } from '../../power-user.js';
-import { dragElement } from '../../RossAscends-mods.js';
-import { getTokenCountAsync } from '../../tokenizers.js';
-import { debounce_timeout } from '../../constants.js';
-import { SlashCommandParser } from '../../slash-commands/SlashCommandParser.js';
-import { SlashCommand } from '../../slash-commands/SlashCommand.js';
-import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../slash-commands/SlashCommandArgument.js';
-import { macros, MacroCategory } from '../../macros/macro-system.js';
-import { commonEnumProviders } from '../../slash-commands/SlashCommandCommonEnumsProvider.js';
-import { removeReasoningFromString } from '../../reasoning.js';
+} from '../../../../script.js';
+import { loadMovingUIState, power_user } from '../../../power-user.js';
+import { dragElement } from '../../../RossAscends-mods.js';
+import { getTokenCountAsync } from '../../../tokenizers.js';
+import { debounce_timeout } from '../../../constants.js';
+import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
+import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
+import { ARGUMENT_TYPE, SlashCommandArgument, SlashCommandNamedArgument } from '../../../slash-commands/SlashCommandArgument.js';
+import { macros, MacroCategory } from '../../../macros/macro-system.js';
+import { commonEnumProviders } from '../../../slash-commands/SlashCommandCommonEnumsProvider.js';
+import { removeReasoningFromString } from '../../../reasoning.js';
 import { MacrosParser } from '/scripts/macros.js';
 
 const MODULE_NAME = 'tech_summarize';
