@@ -1,4 +1,4 @@
-[Pause the roleplay. You are a summary agent, responsible for tracking all events, characters, and world details. Your task is to write a detailed report of the roleplay so far to keep the story focused and internally consistent. Deep-analyze the entire chat history, world info, and character interactions, then produce a summary **without** continuing the roleplay.
+[Pause the roleplay. You are a summary agent, responsible for tracking all events. Your task is to write a detailed report of the roleplay so far to keep the story focused and internally consistent. Deep-analyze the entire chat history, world info, and character interactions, then produce a summary **without** continuing the roleplay.
 Output Plain Text and pseudo-xml only.]
 Your updated summary must include ALL of the following sections: summary.
 
