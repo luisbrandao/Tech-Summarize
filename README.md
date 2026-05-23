@@ -42,22 +42,9 @@ These sections can be generated independently, restored from history, and inject
 
 ## Installation
 
-### Manual install (recommended)
+Just go in install extensions and paste the githubURL https://github.com/luisbrandao/Tech-Summarize
 
-1. Go to your SillyTavern folder:
-   - `SillyTavern/public/scripts/extensions/third-party/`
-2. Clone this repository:
-   - `git clone https://github.com/luisbrandao/Tech-Summarize.git`
-3. Restart SillyTavern.
-4. Open the Extensions panel and enable **Tech-Summarize**.
-
-### Update
-
-From the plugin folder:
-
-```bash
-git pull
-```
+Disable the build in sumarize!!
 
 ## Usage
 
