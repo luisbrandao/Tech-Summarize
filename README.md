@@ -15,6 +15,7 @@ These sections can be generated independently, restored from history, and inject
 - Multi-section chat summarization (`characters`, `body`, `lore`)
 - One-click **Summarize All** or per-section summarize
 - Per-section custom prompts with "restore default" action
+- One-click **Reset Prompts** — restore all section prompts and the injection template to defaults
 - Restore previous summary value per section from chat history
 - Custom summary injection template with placeholders:
   - `{{summary_characters}}`

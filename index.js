@@ -365,6 +365,18 @@ function onSectionPromptRestoreClick(section) {
     $(`#ts_section_prompt_${section}`).val(defaultSectionPrompts[section]).trigger('input');
 }
 
+/**
+ * Restore all section prompts and the injection template to their defaults.
+ * Leaves the summary contents (and every other setting) untouched.
+ */
+function onResetPromptsClick() {
+    for (const section of summarySections) {
+        $(`#ts_section_prompt_${section}`).val(defaultSectionPrompts[section]).trigger('input');
+    }
+    $('#ts_template').val(defaultTemplate).trigger('input');
+    toastr.success('Section prompts and injection template restored to defaults.', 'Tech-Summarize');
+}
+
 // --- Chat memory storage ---
 
 /**
@@ -1136,6 +1148,7 @@ function setupListeners() {
     $('#ts_max_messages_per_request').off('input').on('input', onMaxMessagesPerRequestInput);
     $('#ts_include_wi_scan').off('input').on('input', onIncludeWIScanInput);
     $('#ts_force_summarize_all').off('click').on('click', () => forceSummarizeChat(false));
+    $('#ts_reset_prompts').off('click').on('click', onResetPromptsClick);
     $('#tsSettingsBlockToggle').off('click').on('click', function () {
         // Refresh the connection lists each time the panel opens, in case profiles changed.
         populateConnectionProfiles();
