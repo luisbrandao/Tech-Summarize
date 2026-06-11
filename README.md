@@ -29,10 +29,11 @@ These sections can be generated independently, restored from history, and inject
   - Classic (blocking)
   - Raw (blocking)
   - Raw (non-blocking)
+  - Connection profile (non-blocking) — summarize on its own model/connection
 - Optional toggles and limits:
   - Skip WI/AN input (`No WI/AN`)
   - API response length override
-  - Raw mode max messages per request
+  - Raw/Profile mode max messages per request
 - Slash command support (`/summarize`)
 - Macros for templates and prompts:
   - `{{summary}}`
@@ -69,6 +70,36 @@ Examples:
 /summarize section=lore quiet=true
 /summarize prompt="Summarize this as bullet points" This is the text to summarize.
 ```
+
+## Connection Profile Builder
+
+The **Connection profile, non-blocking** builder sends the summarization request through its own
+Connection Manager profile and completion preset, so summaries can run on a different (e.g. cheaper
+or larger-context) model than the main reply — the same pattern used by the Director and Tracker
+extensions. It never blocks the chat, since it does not share the main API connection.
+
+It builds its own chat-completion prompt:
+
+```text
+system:
+  ### Character card             (description + personality + scenario)
+  ### Player character: <name>   (persona description, when set)
+  ### World Info                 (active lorebook entries; skipped when "No WI/AN" is on)
+  ### Previous summary           (this section's latest stored summary)
+user/assistant: as many unsummarized chat messages as fit the context budget (oldest first)
+user: the section's summarize prompt
+```
+
+Settings (under **Summary Settings**, shown when the builder is selected):
+
+- **Connection profile** — `Use current connection` or any Connection Manager profile
+- **Completion preset** — `Use connection profile default` or any preset
+- **Context size** — token budget for the prompt; `0` = auto (preset's context size, falling back
+  to the app's max context). The response length reservation comes from **API response length**
+  (`0` = the preset's own value).
+
+The summarize prompt is sent as the final **user** message, so the request works on standard
+chat-completion backends (Ollama / llama.cpp / vLLM) as well as remote APIs.
 
 ## Default Section Intent
 

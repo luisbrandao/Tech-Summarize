@@ -130,6 +130,22 @@
                             <input id="ts_prompt_builder_default" type="radio" name="ts_prompt_builder" value="0" />
                             <span>Classic, blocking</span>
                         </label>
+                        <label class="checkbox_label" for="ts_prompt_builder_profile" title="Extension builds its own prompt (character card, player persona, World Info, previous summary, unsummarized messages) and sends it through its own connection profile. Does not block the chat.">
+                            <input id="ts_prompt_builder_profile" type="radio" name="ts_prompt_builder" value="3" />
+                            <span>Connection profile, non-blocking</span>
+                        </label>
+                    </div>
+                    <div id="ts_connection_block" style="display:none;">
+                        <label for="ts_connection_profile">Connection profile (summary model)</label>
+                        <small>Run summarization on a different model than the main reply.</small>
+                        <select id="ts_connection_profile" class="text_pole"></select>
+                        <label for="ts_completion_preset">Completion preset</label>
+                        <select id="ts_completion_preset" class="text_pole"></select>
+                        <label for="ts_connection_context">
+                            <span>Context size (tokens)</span>
+                            <small class="ts_disabled_hint">0 = auto (preset / app)</small>
+                        </label>
+                        <input id="ts_connection_context" class="text_pole" type="number" min="0" max="2000000" step="512" value="0" />
                     </div>
                     <div>
                         <label for="ts_override_response_length">
@@ -138,7 +154,7 @@
                         </label>
                         <input id="ts_override_response_length" type="range" value="{{defaultSettings.overrideResponseLength}}" min="{{defaultSettings.overrideResponseLengthMin}}" max="{{defaultSettings.overrideResponseLengthMax}}" step="{{defaultSettings.overrideResponseLengthStep}}" />
                         <label for="ts_max_messages_per_request">
-                            <span>[Raw] Max messages per request</span> (<span id="ts_max_messages_per_request_value"></span>)
+                            <span>[Raw/Profile] Max messages per request</span> (<span id="ts_max_messages_per_request_value"></span>)
                             <small class="ts_disabled_hint">0 = unlimited</small>
                         </label>
                         <input id="ts_max_messages_per_request" type="range" value="{{defaultSettings.maxMessagesPerRequest}}" min="{{defaultSettings.maxMessagesPerRequestMin}}" max="{{defaultSettings.maxMessagesPerRequestMax}}" step="{{defaultSettings.maxMessagesPerRequestStep}}" />

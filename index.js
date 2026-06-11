@@ -59,6 +59,7 @@ const prompt_builders = {
     DEFAULT: 0,
     RAW_BLOCKING: 1,
     RAW_NON_BLOCKING: 2,
+    CONNECTION_PROFILE: 3,
 };
 
 // --- Section definitions ---
@@ -123,6 +124,14 @@ const defaultSettings = {
     maxMessagesPerRequestMax: 250,
     maxMessagesPerRequestStep: 1,
     prompt_builder: prompt_builders.DEFAULT,
+    // [Connection profile builder] Independent connection for summarization, so it can run on a
+    // different model than the main reply. "current" = SillyTavern's active connection profile.
+    connectionProfile: 'current',
+    // [Connection profile builder] Completion preset. "current" = the profile's own preset.
+    completionPreset: 'current',
+    // [Connection profile builder] Context budget (tokens) for composing the summary prompt.
+    // 0 = auto: use the profile/preset's own context size (falling back to the app's max context).
+    connectionContextSize: 0,
     // Per-section settings (prompts populated after loadDefaultPrompts)
     sections: {
         characters: { prompt: '', content: '' },
@@ -199,6 +208,10 @@ function loadSettings() {
     $('#ts_override_response_length').val(settings().overrideResponseLength).trigger('input');
     $('#ts_max_messages_per_request').val(settings().maxMessagesPerRequest).trigger('input');
     $('#ts_include_wi_scan').prop('checked', settings().scan).trigger('input');
+    populateConnectionProfiles();
+    populateCompletionPresets();
+    $('#ts_connection_context').val(settings().connectionContextSize);
+    toggleConnectionBlock();
 
     // Load per-section controls
     for (const section of summarySections) {
@@ -254,6 +267,7 @@ function onIncludeWIScanInput() {
 function onPromptBuilderInput(e) {
     const value = Number(e.target.value);
     settings().prompt_builder = value;
+    toggleConnectionBlock();
     saveSettingsDebounced();
 }
 
@@ -268,6 +282,66 @@ function onMaxMessagesPerRequestInput() {
     const value = $(this).val();
     settings().maxMessagesPerRequest = Number(value);
     $('#ts_max_messages_per_request_value').text(settings().maxMessagesPerRequest);
+    saveSettingsDebounced();
+}
+
+// --- Connection profile UI ---
+
+function populateConnectionProfiles() {
+    const select = $('#ts_connection_profile');
+    select.empty();
+    select.append($('<option>').val('current').text('Use current connection'));
+    try {
+        const ctx = getContext();
+        const profiles = ctx?.extensionSettings?.connectionManager?.profiles ?? [];
+        for (const p of profiles) {
+            if (p?.name) select.append($('<option>').val(p.name).text(p.name));
+        }
+    } catch (error) {
+        console.warn('Tech-Summarize: failed to load connection profiles:', error);
+    }
+    select.val(settings().connectionProfile);
+}
+
+function populateCompletionPresets() {
+    const select = $('#ts_completion_preset');
+    select.empty();
+    select.append($('<option>').val('current').text('Use connection profile default'));
+    try {
+        const ctx = getContext();
+        const profile = resolveProfileByName(ctx, settings().connectionProfile);
+        const apiId = profile?.mode === 'cc' ? 'openai' : 'textgenerationwebui';
+        const presetManager = ctx.getPresetManager(apiId);
+        const names = presetManager?.getPresetList?.()?.preset_names ?? [];
+        const list = Array.isArray(names) ? names : Object.keys(names);
+        for (const name of list) {
+            select.append($('<option>').val(name).text(name));
+        }
+    } catch (error) {
+        console.warn('Tech-Summarize: failed to load completion presets:', error);
+    }
+    select.val(settings().completionPreset);
+}
+
+/** Shows the connection profile controls only when the connection-profile builder is selected. */
+function toggleConnectionBlock() {
+    $('#ts_connection_block').toggle(settings().prompt_builder === prompt_builders.CONNECTION_PROFILE);
+}
+
+function onConnectionProfileChange() {
+    settings().connectionProfile = String($(this).val());
+    settings().completionPreset = 'current';
+    populateCompletionPresets();
+    saveSettingsDebounced();
+}
+
+function onCompletionPresetChange() {
+    settings().completionPreset = String($(this).val());
+    saveSettingsDebounced();
+}
+
+function onConnectionContextInput() {
+    settings().connectionContextSize = Number($(this).val()) || 0;
     saveSettingsDebounced();
 }
 
@@ -587,6 +661,29 @@ async function summarizeSectionMain(context, section, force, skipWIAN) {
         }
     }
 
+    if (prompt_builders.CONNECTION_PROFILE === settings().prompt_builder) {
+        try {
+            inApiCall = true;
+            const result = await summarizeSectionViaProfile(context, section, prompt);
+
+            if (!result) {
+                if (force) {
+                    toastr.info('To try again, remove the latest summary.', `No messages found to summarize (${defaultSectionLabels[section]})`);
+                }
+                return null;
+            }
+
+            summary = result.summary;
+            index = result.lastUsedIndex;
+        } catch (error) {
+            toastr.error(String(error?.message || error), 'Summary request failed');
+            console.error('Tech-Summarize: connection-profile request failed:', error);
+            return null;
+        } finally {
+            inApiCall = false;
+        }
+    }
+
     if (!summary) {
         console.warn(`Empty summary received for section: ${section}`);
         return;
@@ -658,6 +755,283 @@ async function getRawSummaryPrompt(context, prompt, section) {
     const lastUsedIndex = context.chat.indexOf(latestUsedMessage);
     const rawPrompt = getMemoryString(false);
     return { rawPrompt, lastUsedIndex };
+}
+
+// --- Connection-profile prompt builder ---
+
+// Tokens kept free on top of the reserved response so we never butt right up against the limit.
+const CONTEXT_SAFETY_MARGIN = 256;
+// Rough per-message token overhead (role wrapper) when budgeting history.
+const PER_MESSAGE_OVERHEAD = 4;
+// Cap on how many recent messages are scanned for World Info activation (perf guard).
+const WORLD_INFO_SCAN_CAP = 100;
+
+/**
+ * Resolves a connection profile id by name. "current" => the active profile.
+ */
+function getProfileIdByName(ctx, name) {
+    const cm = ctx?.extensionSettings?.connectionManager;
+    if (!cm) return null;
+    if (name === 'current') return cm.selectedProfile;
+    const p = cm.profiles?.find((x) => x.name === name);
+    return p ? p.id : null;
+}
+
+/**
+ * Resolves a connection profile object by name. "current" => the active profile.
+ */
+function resolveProfileByName(ctx, name) {
+    const cm = ctx?.extensionSettings?.connectionManager;
+    if (!cm || !Array.isArray(cm.profiles)) return null;
+    if (name === 'current') return cm.profiles.find((p) => p.id === cm.selectedProfile) ?? null;
+    return cm.profiles.find((p) => p.name === name) ?? null;
+}
+
+/** Max output tokens a completion preset defines (openai_max_tokens for CC, genamt for textgen). */
+function resolvePresetMaxTokens(ctx, profile, presetName) {
+    if (!presetName) return null;
+    try {
+        const isCc = profile?.mode === 'cc';
+        const preset = ctx.getPresetManager(isCc ? 'openai' : 'textgenerationwebui')?.getCompletionPresetByName?.(presetName);
+        if (!preset) return null;
+        const max = isCc ? preset.openai_max_tokens : preset.genamt;
+        return typeof max === 'number' && max > 0 ? max : null;
+    } catch (error) {
+        console.warn('Tech-Summarize: could not resolve preset max tokens:', error);
+        return null;
+    }
+}
+
+/** Context size a completion preset defines (openai_max_context for CC, max_context for textgen). */
+function resolvePresetMaxContext(ctx, profile, presetName) {
+    if (!presetName) return null;
+    try {
+        const isCc = profile?.mode === 'cc';
+        const preset = ctx.getPresetManager(isCc ? 'openai' : 'textgenerationwebui')?.getCompletionPresetByName?.(presetName);
+        if (!preset) return null;
+        const size = isCc ? preset.openai_max_context : preset.max_context;
+        return typeof size === 'number' && size > 0 ? size : null;
+    } catch (error) {
+        console.warn('Tech-Summarize: could not resolve preset max context:', error);
+        return null;
+    }
+}
+
+/**
+ * Resolves the summarizer's connection: profile, preset, and the token budgets used to compose the
+ * prompt — the response reservation and the total context size (explicit override, else the
+ * preset's value, falling back to the app's current max context).
+ */
+function resolveSummaryConnection(ctx) {
+    const profileId = getProfileIdByName(ctx, settings().connectionProfile);
+    if (!profileId) throw new Error(`Summary connection profile not found: ${settings().connectionProfile}`);
+
+    let profile = null;
+    try {
+        profile = ctx.ConnectionManagerRequestService?.getProfile?.(profileId) ?? null;
+    } catch (error) {
+        profile = null;
+    }
+
+    const usePreset = settings().completionPreset && settings().completionPreset !== 'current';
+    const presetName = usePreset ? settings().completionPreset : profile?.preset;
+
+    const responseTokens = settings().overrideResponseLength > 0
+        ? Number(settings().overrideResponseLength)
+        : (resolvePresetMaxTokens(ctx, profile, presetName) || 1024);
+
+    const sizeOverride = Number(settings().connectionContextSize) || 0;
+    const contextSize = sizeOverride > 0
+        ? sizeOverride
+        : (resolvePresetMaxContext(ctx, profile, presetName) || Number(ctx.maxContext) || 8192);
+
+    return { profileId, profile, presetName, usePreset, responseTokens, contextSize };
+}
+
+/**
+ * Scans recent chat for active World Info / lorebook entries (dry run, emits no events) so the
+ * summarizer sees the same lore the roleplay does. Returns "" if unavailable.
+ */
+async function getActiveWorldInfo(ctx, context, contextSize) {
+    try {
+        if (typeof ctx.getWorldInfoPrompt !== 'function') return '';
+        const messages = context.chat
+            .filter((c) => !c.is_system && c.mes)
+            .slice(-WORLD_INFO_SCAN_CAP)
+            .map((c) => `${c.name}: ${String(c.mes || '').trim()}`);
+        if (messages.length === 0) return '';
+        const chatForWI = messages.slice().reverse(); // getWorldInfoPrompt expects most-recent-first
+        const maxContext = Number(contextSize) || Number(ctx.maxContext) || 8192;
+        const { worldInfoString } = await ctx.getWorldInfoPrompt(chatForWI, maxContext, true);
+        return String(worldInfoString || '').trim();
+    } catch (error) {
+        console.warn('Tech-Summarize: failed to gather world info:', error);
+        return '';
+    }
+}
+
+/**
+ * Builds the system prompt for the connection-profile builder as labeled sections, in this order:
+ *   ### Character card             (description + personality + scenario)
+ *   ### Player character: <name>   (always shown; persona description if present)
+ *   ### World Info                 (active lorebook entries; skipped when "No WI/AN" is on)
+ *   ### Previous summary           (this section's latest stored summary, if any)
+ * Macros like {{user}} / {{char}} are resolved via substituteParams.
+ */
+async function buildSummarySystemPrompt(ctx, context, previousSummary, contextSize) {
+    const sub = (value) => {
+        const s = String(value ?? '').replace(/\r/g, '');
+        try {
+            return typeof ctx.substituteParams === 'function' ? String(ctx.substituteParams(s)) : s;
+        } catch (error) {
+            return s;
+        }
+    };
+
+    const sections = [];
+
+    try {
+        const char = ctx.characters && ctx.characterId != null ? ctx.characters[ctx.characterId] : null;
+        if (char) {
+            const card = sub([char.description, char.personality, char.scenario]
+                .map((p) => String(p ?? '').trim())
+                .filter(Boolean)
+                .join('\n')).trim();
+            if (card) sections.push(`### Character card\n${card}`);
+        }
+
+        const userName = sub('{{user}}').trim() || 'User';
+        const persona = sub(ctx.getCharacterCardFields?.()?.persona ?? '').trim();
+        sections.push(`### Player character: ${userName}${persona ? `\n${persona}` : ''}`);
+    } catch (error) {
+        console.warn('Tech-Summarize: failed to build system prompt sections:', error);
+    }
+
+    if (!settings().SkipWIAN) {
+        const worldInfo = await getActiveWorldInfo(ctx, context, contextSize);
+        if (worldInfo) sections.push(`### World Info\n${worldInfo}`);
+    }
+
+    const previous = String(previousSummary || '').trim();
+    if (previous) sections.push(`### Previous summary\n${previous}`);
+
+    return sections.join('\n\n').trim();
+}
+
+/**
+ * Builds the summary chat-completion message array:
+ * system (character card + player persona + world info + previous summary) + as many unsummarized
+ * chat messages as fit the context budget + the section's summarize prompt as the final message.
+ * The summarize prompt ends the array as a USER turn: standard chat-completion backends always add
+ * a generation prompt, so a trailing assistant message would render as a completed turn and the
+ * model would emit an end token immediately (dies after 1 token).
+ */
+async function buildSummaryMessages(ctx, context, section, prompt, conn) {
+    const latestMemory = getLatestMemoryFromChat(context.chat);
+    const previousSummary = latestMemory[section] || '';
+    const latestSummaryIndex = getIndexOfLatestChatSummary(context.chat);
+    const system = await buildSummarySystemPrompt(ctx, context, previousSummary, conn.contextSize);
+    const instruction = { role: 'user', content: prompt };
+
+    const budget = Math.max(0, conn.contextSize - conn.responseTokens - CONTEXT_SAFETY_MARGIN);
+    let used = 0;
+    if (system) used += await countSourceTokens(system) + PER_MESSAGE_OVERHEAD;
+    used += await countSourceTokens(instruction.content) + PER_MESSAGE_OVERHEAD;
+
+    // Exclude the latest message (mirrors the raw builder: the summary anchors at length - 2).
+    const chat = context.chat.slice(0, -1);
+    const included = [];
+    let latestUsedMessage = null;
+
+    // Forward-fill from the first unsummarized message: summarization consumes the OLDEST pending
+    // messages first, so the next run picks up where this one stopped.
+    for (let index = latestSummaryIndex + 1; index < chat.length; index++) {
+        const message = chat[index];
+        if (!message) break;
+        if (message.is_system || !message.mes) continue;
+
+        const content = `${message.name}:\n${message.mes}`;
+        const cost = await countSourceTokens(content) + PER_MESSAGE_OVERHEAD;
+        if (used + cost > budget) break;
+
+        used += cost;
+        included.push({ role: message.is_user ? 'user' : 'assistant', content });
+        latestUsedMessage = message;
+
+        if (settings().maxMessagesPerRequest > 0 && included.length >= settings().maxMessagesPerRequest) {
+            break;
+        }
+    }
+
+    const lastUsedIndex = context.chat.indexOf(latestUsedMessage);
+
+    const messages = [];
+    if (system) messages.push({ role: 'system', content: system });
+    messages.push(...included);
+    messages.push(instruction);
+    return { messages, lastUsedIndex };
+}
+
+/** Sends the summary request via the configured profile + completion preset (non-streaming). */
+async function sendSummaryRequest(ctx, conn, messages) {
+    if (!ctx.ConnectionManagerRequestService) throw new Error('ConnectionManagerRequestService not available');
+
+    // "current" => use the profile's own preset. Any other value => temporarily point the profile
+    // at the chosen preset for this one request (core derives presetName from profile.preset).
+    let overriddenProfile = null;
+    let originalPreset;
+    try {
+        const profile = conn.profile ?? ctx.ConnectionManagerRequestService.getProfile(conn.profileId);
+        if (conn.usePreset && profile) {
+            overriddenProfile = profile;
+            originalPreset = profile.preset;
+            profile.preset = settings().completionPreset;
+        }
+
+        // Non-streaming: the summary isn't shown live, and a single response is marginally faster.
+        // With stream:false, sendRequest returns ExtractedData (.content).
+        const response = await ctx.ConnectionManagerRequestService.sendRequest(
+            conn.profileId,
+            messages,
+            conn.responseTokens,
+            { stream: false, extractData: true, includePreset: true },
+        );
+
+        // Guard the streaming shape too, in case a backend ignores the flag and hands back a
+        // generator factory yielding cumulative { text }.
+        if (typeof response === 'function') {
+            let text = '';
+            for await (const chunk of response()) {
+                if (chunk && typeof chunk.text === 'string') text = chunk.text;
+            }
+            return text;
+        }
+        return response?.content ?? '';
+    } finally {
+        if (overriddenProfile) overriddenProfile.preset = originalPreset;
+    }
+}
+
+/**
+ * Summarize a section through the extension's own connection profile.
+ * @param {object} context SillyTavern context snapshot
+ * @param {string} section Section name
+ * @param {string} prompt The section's summarize prompt
+ * @returns {Promise<{summary: string, lastUsedIndex: number}|null>} null when nothing to summarize
+ */
+async function summarizeSectionViaProfile(context, section, prompt) {
+    const ctx = getContext();
+    const conn = resolveSummaryConnection(ctx);
+    const resolvedPrompt = typeof ctx.substituteParams === 'function' ? String(ctx.substituteParams(prompt)) : prompt;
+    const { messages, lastUsedIndex } = await buildSummaryMessages(ctx, context, section, resolvedPrompt, conn);
+
+    if (lastUsedIndex === null || lastUsedIndex === -1) {
+        return null;
+    }
+
+    const response = await sendSummaryRequest(ctx, conn, messages);
+    const summary = removeReasoningFromString(String(response || ''));
+    return { summary, lastUsedIndex };
 }
 
 // --- Slash command callback ---
@@ -754,11 +1128,18 @@ function setupListeners() {
     $('#ts_prompt_builder_default').off('input').on('input', onPromptBuilderInput);
     $('#ts_prompt_builder_raw_blocking').off('input').on('input', onPromptBuilderInput);
     $('#ts_prompt_builder_raw_non_blocking').off('input').on('input', onPromptBuilderInput);
+    $('#ts_prompt_builder_profile').off('input').on('input', onPromptBuilderInput);
+    $('#ts_connection_profile').off('change').on('change', onConnectionProfileChange);
+    $('#ts_completion_preset').off('change').on('change', onCompletionPresetChange);
+    $('#ts_connection_context').off('input').on('input', onConnectionContextInput);
     $('#ts_override_response_length').off('input').on('input', onOverrideResponseLengthInput);
     $('#ts_max_messages_per_request').off('input').on('input', onMaxMessagesPerRequestInput);
     $('#ts_include_wi_scan').off('input').on('input', onIncludeWIScanInput);
     $('#ts_force_summarize_all').off('click').on('click', () => forceSummarizeChat(false));
     $('#tsSettingsBlockToggle').off('click').on('click', function () {
+        // Refresh the connection lists each time the panel opens, in case profiles changed.
+        populateConnectionProfiles();
+        populateCompletionPresets();
         $('#tsSettingsBlock').slideToggle(200, 'swing');
     });
 
