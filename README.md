@@ -85,9 +85,11 @@ It builds its own chat-completion prompt:
 system:
   ### Character card             (description + personality + scenario)
   ### Player character: <name>   (persona description, when set)
+  ### Author's Note              (at its configured position; skipped when "No WI/AN" is on)
   ### World Info                 (active lorebook entries; skipped when "No WI/AN" is on)
   ### Previous summary           (this section's latest stored summary)
 user/assistant: as many unsummarized chat messages as fit the context budget (oldest first)
+                (an in-chat positioned Author's Note is spliced in at its configured depth)
 user: the section's summarize prompt
 ```
 

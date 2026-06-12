@@ -777,6 +777,8 @@ const CONTEXT_SAFETY_MARGIN = 256;
 const PER_MESSAGE_OVERHEAD = 4;
 // Cap on how many recent messages are scanned for World Info activation (perf guard).
 const WORLD_INFO_SCAN_CAP = 100;
+// Extension prompt key under which core stores the Author's Note (floating prompt).
+const AUTHORS_NOTE_KEY = '2_floating_prompt';
 
 /**
  * Resolves a connection profile id by name. "current" => the active profile.
@@ -883,14 +885,42 @@ async function getActiveWorldInfo(ctx, context, contextSize) {
 }
 
 /**
+ * Reads the Author's Note from core's floating-prompt extension entry. Returns null when empty.
+ * Carries position/depth/role so the builder can honor where the note normally sits.
+ */
+function getAuthorsNote(ctx) {
+    try {
+        const entry = ctx.extensionPrompts?.[AUTHORS_NOTE_KEY];
+        const raw = String(entry?.value ?? '').trim();
+        if (!raw) return null;
+        const substituted = typeof ctx.substituteParams === 'function' ? String(ctx.substituteParams(raw)) : raw;
+        const text = substituted.replace(/\r/g, '').trim();
+        if (!text) return null;
+        const roleNames = { 0: 'system', 1: 'user', 2: 'assistant' };
+        return {
+            text,
+            position: Number(entry.position ?? extension_prompt_types.IN_CHAT),
+            depth: Math.max(0, Number(entry.depth) || 0),
+            role: roleNames[Number(entry.role)] || 'system',
+        };
+    } catch (error) {
+        console.warn('Tech-Summarize: failed to read author\'s note:', error);
+        return null;
+    }
+}
+
+/**
  * Builds the system prompt for the connection-profile builder as labeled sections, in this order:
+ *   ### Author's Note              (when positioned before the prompt; skipped when "No WI/AN" is on)
  *   ### Character card             (description + personality + scenario)
  *   ### Player character: <name>   (always shown; persona description if present)
+ *   ### Author's Note              (when positioned in-prompt; skipped when "No WI/AN" is on)
  *   ### World Info                 (active lorebook entries; skipped when "No WI/AN" is on)
  *   ### Previous summary           (this section's latest stored summary, if any)
+ * In-chat positioned notes are handled by buildSummaryMessages instead.
  * Macros like {{user}} / {{char}} are resolved via substituteParams.
  */
-async function buildSummarySystemPrompt(ctx, context, previousSummary, contextSize) {
+async function buildSummarySystemPrompt(ctx, context, previousSummary, contextSize, authorsNote) {
     const sub = (value) => {
         const s = String(value ?? '').replace(/\r/g, '');
         try {
@@ -919,6 +949,12 @@ async function buildSummarySystemPrompt(ctx, context, previousSummary, contextSi
         console.warn('Tech-Summarize: failed to build system prompt sections:', error);
     }
 
+    if (authorsNote) {
+        const noteSection = `### Author's Note\n${authorsNote.text}`;
+        if (authorsNote.position === extension_prompt_types.BEFORE_PROMPT) sections.unshift(noteSection);
+        else if (authorsNote.position === extension_prompt_types.IN_PROMPT) sections.push(noteSection);
+    }
+
     if (!settings().SkipWIAN) {
         const worldInfo = await getActiveWorldInfo(ctx, context, contextSize);
         if (worldInfo) sections.push(`### World Info\n${worldInfo}`);
@@ -932,7 +968,7 @@ async function buildSummarySystemPrompt(ctx, context, previousSummary, contextSi
 
 /**
  * Builds the summary chat-completion message array:
- * system (character card + player persona + world info + previous summary) + as many unsummarized
+ * system (character card + player persona + author's note + world info + previous summary) + as many unsummarized
  * chat messages as fit the context budget + the section's summarize prompt as the final message.
  * The summarize prompt ends the array as a USER turn: standard chat-completion backends always add
  * a generation prompt, so a trailing assistant message would render as a completed turn and the
@@ -942,13 +978,20 @@ async function buildSummaryMessages(ctx, context, section, prompt, conn) {
     const latestMemory = getLatestMemoryFromChat(context.chat);
     const previousSummary = latestMemory[section] || '';
     const latestSummaryIndex = getIndexOfLatestChatSummary(context.chat);
-    const system = await buildSummarySystemPrompt(ctx, context, previousSummary, conn.contextSize);
+    const authorsNote = settings().SkipWIAN ? null : getAuthorsNote(ctx);
+    const system = await buildSummarySystemPrompt(ctx, context, previousSummary, conn.contextSize, authorsNote);
     const instruction = { role: 'user', content: prompt };
+
+    // An in-chat positioned Author's Note rides along as a history message at its configured depth.
+    const inChatNote = authorsNote && authorsNote.position === extension_prompt_types.IN_CHAT
+        ? { role: authorsNote.role, content: `### Author's Note\n${authorsNote.text}` }
+        : null;
 
     const budget = Math.max(0, conn.contextSize - conn.responseTokens - CONTEXT_SAFETY_MARGIN);
     let used = 0;
     if (system) used += await countSourceTokens(system) + PER_MESSAGE_OVERHEAD;
     used += await countSourceTokens(instruction.content) + PER_MESSAGE_OVERHEAD;
+    if (inChatNote) used += await countSourceTokens(inChatNote.content) + PER_MESSAGE_OVERHEAD;
 
     // Exclude the latest message (mirrors the raw builder: the summary anchors at length - 2).
     const chat = context.chat.slice(0, -1);
@@ -980,6 +1023,10 @@ async function buildSummaryMessages(ctx, context, section, prompt, conn) {
     const messages = [];
     if (system) messages.push({ role: 'system', content: system });
     messages.push(...included);
+    if (inChatNote) {
+        const floor = system ? 1 : 0;
+        messages.splice(Math.max(floor, messages.length - authorsNote.depth), 0, inChatNote);
+    }
     messages.push(instruction);
     return { messages, lastUsedIndex };
 }
