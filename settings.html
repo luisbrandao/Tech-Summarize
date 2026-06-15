@@ -9,6 +9,39 @@
         </div>
         <div class="inline-drawer-content">
             <div id="tsExtensionDrawerContents">
+                <div>
+                    <label>
+                        Prompt builder
+                    </label>
+                    <label class="checkbox_label" for="ts_prompt_builder_raw_blocking" title="Extension will build its own prompt using messages that were not summarized yet. Blocks the chat until the summary is generated.">
+                        <input id="ts_prompt_builder_raw_blocking" type="radio" name="ts_prompt_builder" value="1" />
+                        <span>Raw, blocking</span>
+                    </label>
+                    <label class="checkbox_label" for="ts_prompt_builder_raw_non_blocking" title="Extension will build its own prompt using messages that were not summarized yet. Does not block the chat while the summary is being generated.">
+                        <input id="ts_prompt_builder_raw_non_blocking" type="radio" name="ts_prompt_builder" value="2" />
+                        <span>Raw, non-blocking</span>
+                    </label>
+                    <label class="checkbox_label" id="ts_prompt_builder_default" title="Extension will use the regular main prompt builder and add the summary request as the last system message.">
+                        <input id="ts_prompt_builder_default" type="radio" name="ts_prompt_builder" value="0" />
+                        <span>Classic, blocking</span>
+                    </label>
+                    <label class="checkbox_label" for="ts_prompt_builder_profile" title="Extension builds its own prompt (character card, player persona, Author's Note, World Info, previous summary, unsummarized messages — no system prompt) and sends it through its own connection profile. Does not block the chat.">
+                        <input id="ts_prompt_builder_profile" type="radio" name="ts_prompt_builder" value="3" />
+                        <span>Connection profile, non-blocking</span>
+                    </label>
+                </div>
+                <div id="ts_connection_block" style="display:none;">
+                    <label for="ts_connection_profile">Connection profile (summary model)</label>
+                    <small>Run summarization on a different model than the main reply.</small>
+                    <select id="ts_connection_profile" class="text_pole"></select>
+                    <label for="ts_completion_preset">Completion preset</label>
+                    <select id="ts_completion_preset" class="text_pole"></select>
+                    <label for="ts_connection_context">
+                        <span>Context size (tokens)</span>
+                        <small class="ts_disabled_hint">0 = auto (preset / app)</small>
+                    </label>
+                    <input id="ts_connection_context" class="text_pole" type="number" min="0" max="2000000" step="512" value="0" />
+                </div>
 
                 <!-- Global controls row -->
                 <div class="ts_contents_controls">
@@ -118,39 +151,6 @@
                     </div>
                 </div>
                 <div id="tsSettingsBlock" style="display:none;">
-                    <div>
-                        <label>
-                            Prompt builder
-                        </label>
-                        <label class="checkbox_label" for="ts_prompt_builder_raw_blocking" title="Extension will build its own prompt using messages that were not summarized yet. Blocks the chat until the summary is generated.">
-                            <input id="ts_prompt_builder_raw_blocking" type="radio" name="ts_prompt_builder" value="1" />
-                            <span>Raw, blocking</span>
-                        </label>
-                        <label class="checkbox_label" for="ts_prompt_builder_raw_non_blocking" title="Extension will build its own prompt using messages that were not summarized yet. Does not block the chat while the summary is being generated.">
-                            <input id="ts_prompt_builder_raw_non_blocking" type="radio" name="ts_prompt_builder" value="2" />
-                            <span>Raw, non-blocking</span>
-                        </label>
-                        <label class="checkbox_label" id="ts_prompt_builder_default" title="Extension will use the regular main prompt builder and add the summary request as the last system message.">
-                            <input id="ts_prompt_builder_default" type="radio" name="ts_prompt_builder" value="0" />
-                            <span>Classic, blocking</span>
-                        </label>
-                        <label class="checkbox_label" for="ts_prompt_builder_profile" title="Extension builds its own prompt (character card, player persona, Author's Note, World Info, previous summary, unsummarized messages — no system prompt) and sends it through its own connection profile. Does not block the chat.">
-                            <input id="ts_prompt_builder_profile" type="radio" name="ts_prompt_builder" value="3" />
-                            <span>Connection profile, non-blocking</span>
-                        </label>
-                    </div>
-                    <div id="ts_connection_block" style="display:none;">
-                        <label for="ts_connection_profile">Connection profile (summary model)</label>
-                        <small>Run summarization on a different model than the main reply.</small>
-                        <select id="ts_connection_profile" class="text_pole"></select>
-                        <label for="ts_completion_preset">Completion preset</label>
-                        <select id="ts_completion_preset" class="text_pole"></select>
-                        <label for="ts_connection_context">
-                            <span>Context size (tokens)</span>
-                            <small class="ts_disabled_hint">0 = auto (preset / app)</small>
-                        </label>
-                        <input id="ts_connection_context" class="text_pole" type="number" min="0" max="2000000" step="512" value="0" />
-                    </div>
                     <div>
                         <label for="ts_override_response_length">
                             <span>API response length</span> (<span id="ts_override_response_length_value"></span> tokens)
