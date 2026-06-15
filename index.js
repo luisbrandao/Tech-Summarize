@@ -351,7 +351,12 @@ function onSectionContentInput(section) {
     const value = $(`#ts_section_content_${section}`).val();
     settings().sections[section].content = value;
     reinsertMemory();
-    saveSectionToMessage();
+    // Update the section in place on its existing anchor message rather than planting it at the
+    // chat tail: a manual tweak doesn't extend coverage, so it must not advance the window (which
+    // would strand the still-unsummarized messages before the tail). Falls back to the tail only
+    // when the section has no anchor yet.
+    const anchor = getIndexOfLatestChatSummary(getContext().chat, section);
+    saveSectionToMessage(anchor >= 0 ? anchor : null, section);
     saveSettingsDebounced();
 }
 
@@ -381,40 +386,76 @@ function onResetPromptsClick() {
 
 /**
  * Get the latest section-based memory from the chat.
+ *
+ * Each section's content is resolved independently: the sections summarize on their own cadence
+ * (see {@link getIndexOfLatestChatSummary}), so a section's content can live on a different message
+ * than another's. Taking all three from a single "latest" message would drop a section whose newest
+ * value sits on an earlier message. We therefore take, per section, the value from the newest
+ * message that actually *defines* that section's key.
+ *
+ * Resolving by key presence (not truthiness) matters in two ways: a section is only written on a
+ * message that touched it (see {@link saveSectionToMessage}), so a present key is always that
+ * section's real value — never a stale snapshot copied from another section's save; and a
+ * deliberately cleared section (written as '') is honored instead of being shadowed by an older
+ * non-empty value.
+ *
  * @param {Array} chat Chat messages
  * @returns {object} Object with section contents: {characters, body, lore}
  */
 function getLatestMemoryFromChat(chat) {
-    const empty = { characters: '', body: '', lore: '' };
+    const result = { characters: '', body: '', lore: '' };
     if (!Array.isArray(chat) || !chat.length) {
-        return empty;
+        return result;
     }
 
+    const found = { characters: false, body: false, lore: false };
     const reversedChat = chat.slice().reverse();
     reversedChat.shift();
     for (let mes of reversedChat) {
-        if (mes.extra && mes.extra.memory) {
-            // Handle legacy string format
-            if (typeof mes.extra.memory === 'string') {
-                return { characters: '', body: mes.extra.memory, lore: '' };
+        if (!mes.extra || !mes.extra.memory) continue;
+        const mem = mes.extra.memory;
+
+        // Legacy string format: a whole-chat summary stored as the body section.
+        if (typeof mem === 'string') {
+            if (!found.body) {
+                result.body = mem;
+                found.body = true;
             }
-            return {
-                characters: mes.extra.memory.characters || '',
-                body: mes.extra.memory.body || '',
-                lore: mes.extra.memory.lore || '',
-            };
+            continue;
         }
+
+        for (const section of summarySections) {
+            if (!found[section] && Object.prototype.hasOwnProperty.call(mem, section)) {
+                result[section] = mem[section] || '';
+                found[section] = true;
+            }
+        }
+        if (found.characters && found.body && found.lore) break;
     }
 
-    return empty;
+    return result;
 }
 
 /**
- * Get the index of the latest memory summary from the chat.
+ * Index of the message a section was last summarized up to — its per-section "consumed up to here"
+ * anchor for the Raw and Connection-profile builders, which window the chat from this index forward.
+ *
+ * Each section tracks its own progress: the original bug was a single global marker, so summarizing
+ * the first section planted an entry the other sections then mistook for "already summarized",
+ * leaving them zero input. Now a section's content is stored under its own key (see
+ * {@link saveSectionToMessage}) and the anchor is the **same message {@link getLatestMemoryFromChat}
+ * reads that section's content from** — the newest message *defining* the key. Selecting on key
+ * presence (not on non-emptiness) is deliberate: it ties the window position to the latest content
+ * exactly, so the two can never point at different messages (a divergence would either strand the
+ * messages between them or let a stale value shadow a fresh one). Because the next run windows from
+ * anchor+1, each summary lands strictly after the current anchor, so the anchor only moves forward
+ * and an empty/cleared value never gets shadowed by an older one.
+ *
  * @param {Array} chat Chat messages
- * @returns {number} Index of the latest memory summary or -1 if not found
+ * @param {string|null} section Section to look up; when null, any stored memory counts
+ * @returns {number} Index of the anchoring message, or -1 if none
  */
-function getIndexOfLatestChatSummary(chat) {
+function getIndexOfLatestChatSummary(chat, section = null) {
     if (!Array.isArray(chat) || !chat.length) {
         return -1;
     }
@@ -422,9 +463,17 @@ function getIndexOfLatestChatSummary(chat) {
     const reversedChat = chat.slice().reverse();
     reversedChat.shift();
     for (let mes of reversedChat) {
-        if (mes.extra && mes.extra.memory) {
+        if (!mes.extra || !mes.extra.memory) continue;
+
+        if (!section) {
             return chat.indexOf(mes);
         }
+
+        const mem = mes.extra.memory;
+        const defines = typeof mem === 'string'
+            ? section === 'body'
+            : Object.prototype.hasOwnProperty.call(mem, section);
+        if (defines) return chat.indexOf(mes);
     }
 
     return -1;
@@ -467,17 +516,35 @@ function setSectionContents(memoryObj, saveToMessage, index = null) {
     const context = getContext();
     if (saveToMessage && context.chat.length) {
         const idx = index ?? context.chat.length - 2;
-        const mes = context.chat[idx < 0 ? 0 : idx];
-        if (!mes.extra) {
-            mes.extra = {};
-        }
-        mes.extra.memory = {
-            characters: sections.characters.content,
-            body: sections.body.content,
-            lore: sections.lore.content,
-        };
+        // On a one-message chat the second-to-last index is -1; both readers shift() the sole
+        // message off, so a write there is unreadable. Skip persisting (it stays live in settings).
+        if (idx < 0) return;
+        const mes = context.chat[idx];
+        const memory = ensureMessageMemory(mes);
+        memory.characters = sections.characters.content;
+        memory.body = sections.body.content;
+        memory.lore = sections.lore.content;
         saveChatDebounced();
     }
+}
+
+/**
+ * Normalize a message's memory storage so a per-section content write is safe: convert the legacy
+ * string shape to `{ body }` and ensure `mes.extra.memory` is an object. Returns it to populate.
+ *
+ * @param {object} mes Chat message
+ * @returns {object} The message's memory object
+ */
+function ensureMessageMemory(mes) {
+    if (!mes.extra) mes.extra = {};
+    let memory = mes.extra.memory;
+    if (typeof memory === 'string') {
+        memory = { body: memory };
+    } else if (!memory || typeof memory !== 'object') {
+        memory = {};
+    }
+    mes.extra.memory = memory;
+    return memory;
 }
 
 /**
@@ -496,25 +563,40 @@ function setSectionContent(section, value, saveToMessage, index = null) {
     setExtensionPrompt(MODULE_NAME, formatted, settings().position, settings().depth, settings().scan, settings().role);
 
     if (saveToMessage) {
-        saveSectionToMessage(index);
+        saveSectionToMessage(index, section);
     }
 }
 
-function saveSectionToMessage(index = null) {
+/**
+ * Persist section content onto a chat message.
+ *
+ * When `section` is given (the normal path), only that section's key is written, preserving any
+ * sibling sections already stored on the message. Writing a single key — rather than a full
+ * three-section snapshot from settings — is what keeps a section's save from clobbering another
+ * section's value with a stale copy, so {@link getLatestMemoryFromChat} always resolves each
+ * section's true latest content even when the sections anchor on different messages.
+ *
+ * @param {number|null} index Target message index; null = the second-to-last message
+ * @param {string|null} section Section to write; null writes the full current snapshot (bulk save)
+ */
+function saveSectionToMessage(index = null, section = null) {
     const context = getContext();
     if (!context.chat.length) return;
 
     const sections = settings().sections;
     const idx = index ?? context.chat.length - 2;
-    const mes = context.chat[idx < 0 ? 0 : idx];
-    if (!mes.extra) {
-        mes.extra = {};
+    // One-message chat: second-to-last index is -1 and both readers shift() the sole message off,
+    // so a write there can never be read back. Skip persisting (content stays live in settings).
+    if (idx < 0) return;
+    const mes = context.chat[idx];
+    const memory = ensureMessageMemory(mes);
+    if (section) {
+        memory[section] = sections[section].content;
+    } else {
+        memory.characters = sections.characters.content;
+        memory.body = sections.body.content;
+        memory.lore = sections.lore.content;
     }
-    mes.extra.memory = {
-        characters: sections.characters.content,
-        body: sections.body.content,
-        lore: sections.lore.content,
-    };
     saveChatDebounced();
 }
 
@@ -538,12 +620,18 @@ function onSectionContentRestoreClick(section) {
         const mes = context.chat[i];
         if (!mes.extra || !mes.extra.memory) continue;
 
+        // Only messages that actually stored this section are restore points; per-section writes
+        // mean other messages simply omit the key (treating that as '' would let an unrelated
+        // save masquerade as a previous value).
         const stored = mes.extra.memory;
-        let storedValue = '';
+        let storedValue;
         if (typeof stored === 'string') {
-            storedValue = section === 'body' ? stored : '';
-        } else {
+            if (section !== 'body') continue;
+            storedValue = stored;
+        } else if (Object.prototype.hasOwnProperty.call(stored, section)) {
             storedValue = stored[section] || '';
+        } else {
+            continue;
         }
 
         if (storedValue !== currentContent) {
@@ -705,6 +793,9 @@ async function summarizeSectionMain(context, section, force, skipWIAN) {
         return;
     }
 
+    // Storing the summary under the section's own key at the window-end index doubles as its
+    // per-section anchor: the next Raw/Profile run resumes after the newest message holding
+    // non-empty content for this section (see getIndexOfLatestChatSummary).
     setSectionContent(section, summary, true, index);
     return summary;
 }
@@ -734,7 +825,7 @@ async function getRawSummaryPrompt(context, prompt, section) {
     const chat = context.chat.slice();
     const latestMemory = getLatestMemoryFromChat(chat);
     const latestSectionSummary = latestMemory[section] || '';
-    const latestSummaryIndex = getIndexOfLatestChatSummary(chat);
+    const latestSummaryIndex = getIndexOfLatestChatSummary(chat, section);
     chat.pop();
     const chatBuffer = [];
     const PADDING = 64;
@@ -977,7 +1068,7 @@ async function buildSummarySystemPrompt(ctx, context, previousSummary, contextSi
 async function buildSummaryMessages(ctx, context, section, prompt, conn) {
     const latestMemory = getLatestMemoryFromChat(context.chat);
     const previousSummary = latestMemory[section] || '';
-    const latestSummaryIndex = getIndexOfLatestChatSummary(context.chat);
+    const latestSummaryIndex = getIndexOfLatestChatSummary(context.chat, section);
     const authorsNote = settings().SkipWIAN ? null : getAuthorsNote(ctx);
     const system = await buildSummarySystemPrompt(ctx, context, previousSummary, conn.contextSize, authorsNote);
     const instruction = { role: 'user', content: prompt };
@@ -1248,6 +1339,12 @@ jQuery(async function () {
     await addExtensionControls();
     loadSettings();
     eventSource.on(event_types.CHAT_CHANGED, onChatChanged);
+    // The injected memory is built from settings(), which is reconciled with the chat only on these
+    // events. Deleting or swiping away a section's anchor message changes what the chat resolves to,
+    // so re-pull (read-only) to keep the injection in sync without a chat switch.
+    for (const evt of ['MESSAGE_DELETED', 'MESSAGE_SWIPED']) {
+        if (event_types[evt]) eventSource.on(event_types[evt], onChatChanged);
+    }
     SlashCommandParser.addCommandObject(SlashCommand.fromProps({
         name: 'summarize',
         callback: summarizeCallback,

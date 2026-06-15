@@ -45,6 +45,23 @@ Selected by `settings().prompt_builder` (`prompt_builders` enum in `index.js`):
   Director which fills backward — summarization must consume the oldest pending messages so the
   next run picks up where this one stopped. The anchor message index (`lastUsedIndex`) is where
   the new summary gets stored.
+- **Per-section windowing, one source of truth.** The three sections summarize independently. Each
+  section's content is stored under its own key in `mes.extra.memory` (`{ characters?, body?, lore? }`),
+  and a save writes **only the touched section's key** (`saveSectionToMessage(index, section)`) — never
+  a full three-section snapshot — so one section's save can't clobber another's value or progress.
+  - Both readers select the **same message**: the newest one that *defines* the section's key
+    (`Object.prototype.hasOwnProperty`, empty included). `getLatestMemoryFromChat(chat)` returns that
+    message's value (so a deliberate clear, stored as `''`, is honored); `getIndexOfLatestChatSummary
+    (chat, section)` returns that message's index — the anchor the next Raw/Profile run windows from.
+  Selecting on key *presence* (not non-emptiness) is what keeps content and window pointing at the
+  same message, so they can never diverge (no separate anchor marker to drift). Because the next run
+  windows from anchor+1, each summary lands strictly after the current anchor — the anchor only moves
+  forward, so a cleared/empty value is never shadowed by an older one. The original bug was a single
+  global marker: summarizing the first section planted an entry the other two read as "already
+  summarized", so they found zero messages and errored. Manual edits, restores, and Classic saves all
+  flow through `saveSectionToMessage` and re-anchor only the section they touch, consistently with
+  their content. (A save on a one-message chat is skipped — the lone message is the one both readers
+  drop, so it can't be read back.)
 - The summarize instruction must end the array as a **user** turn. Chat-completion backends
   always append a generation prompt; a trailing assistant message renders as a completed turn
   and the model emits an end token after ~1 token.
