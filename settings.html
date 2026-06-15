@@ -25,9 +25,13 @@
                         <input id="ts_prompt_builder_default" type="radio" name="ts_prompt_builder" value="0" />
                         <span>Classic, blocking</span>
                     </label>
-                    <label class="checkbox_label" for="ts_prompt_builder_profile" title="Extension builds its own prompt (character card, player persona, Author's Note, World Info, previous summary, unsummarized messages — no system prompt) and sends it through its own connection profile. Does not block the chat.">
+                    <label class="checkbox_label" for="ts_prompt_builder_profile" title="Extension builds its own prompt (character card, player persona, Author's Note, World Info, previous summary, unsummarized messages — no system prompt) and sends it through its own connection profile. Summarizes only the messages not yet summarized. Does not block the chat.">
                         <input id="ts_prompt_builder_profile" type="radio" name="ts_prompt_builder" value="3" />
                         <span>Connection profile, non-blocking</span>
+                    </label>
+                    <label class="checkbox_label" for="ts_prompt_builder_profile_classic" title="Like the Connection profile builder, but Classic-style: feeds as many of the most recent messages as fit and re-summarizes the whole chat each run (instead of only the unsummarized window). Sends through its own connection profile. Does not block the chat.">
+                        <input id="ts_prompt_builder_profile_classic" type="radio" name="ts_prompt_builder" value="4" />
+                        <span>Connection profile, whole chat (classic-style)</span>
                     </label>
                 </div>
                 <div id="ts_connection_block" style="display:none;">

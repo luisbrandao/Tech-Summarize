@@ -25,7 +25,8 @@ Selected by `settings().prompt_builder` (`prompt_builders` enum in `index.js`):
 | --- | --- |
 | Classic (`DEFAULT`) | `generateQuietPrompt()` — core builds the full prompt, summary request appended. Blocking. |
 | Raw blocking / non-blocking | `getRawSummaryPrompt()` concatenates unsummarized messages as plain text, sent via `generateRaw()`. |
-| Connection profile | Builds its own chat-completion message array and sends it through an independent connection profile via `ctx.ConnectionManagerRequestService.sendRequest()`. Non-blocking; can target a different model than the main reply. |
+| Connection profile (`CONNECTION_PROFILE`) | Builds its own chat-completion message array and sends it through an independent connection profile via `ctx.ConnectionManagerRequestService.sendRequest()`. Non-blocking; can target a different model than the main reply. Fills the unsummarized window forward (incremental). |
+| Connection profile, whole chat (`CONNECTION_PROFILE_CLASSIC`) | Same connection-profile machinery, but Classic-style: `buildSummaryMessages(..., wholeChat=true)` fills the most recent messages that fit (backward from the end) and re-summarizes the whole chat each run. Anchors the stored summary at the newest message kept. |
 
 ### Connection-profile builder (the important one)
 
@@ -41,10 +42,13 @@ Selected by `settings().prompt_builder` (`prompt_builders` enum in `index.js`):
   into history at depth by `buildSummaryMessages()`), active World Info (dry-run scan via
   `ctx.getWorldInfoPrompt(chat, maxContext, true)` — never the event-emitting variant), and the
   section's previous summary. The "No WI/AN" checkbox (`SkipWIAN`) drops both WI and the note.
-- History fills **forward from the first unsummarized message** (oldest first), unlike the
-  Director which fills backward — summarization must consume the oldest pending messages so the
-  next run picks up where this one stopped. The anchor message index (`lastUsedIndex`) is where
-  the new summary gets stored.
+- History fill has two modes (`buildSummaryMessages(..., wholeChat)`): the default **incremental**
+  mode fills **forward from the first unsummarized message** (oldest first) — summarization consumes
+  the oldest pending messages so the next run picks up where this one stopped; the **wholeChat**
+  mode (the `CONNECTION_PROFILE_CLASSIC` builder) fills the most recent messages **backward from the
+  end** and re-summarizes everything each run, like Classic. The anchor message index
+  (`lastUsedIndex`) is where the new summary gets stored — the window end for incremental, the
+  newest kept message for wholeChat.
 - **Per-section windowing, one source of truth.** The three sections summarize independently. Each
   section's content is stored under its own key in `mes.extra.memory` (`{ characters?, body?, lore? }`),
   and a save writes **only the touched section's key** (`saveSectionToMessage(index, section)`) — never

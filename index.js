@@ -60,6 +60,10 @@ const prompt_builders = {
     RAW_BLOCKING: 1,
     RAW_NON_BLOCKING: 2,
     CONNECTION_PROFILE: 3,
+    // Like CONNECTION_PROFILE but uses the Classic message strategy: feed as many of the most recent
+    // messages as fit and re-summarize the whole chat each run, instead of windowing only the
+    // not-yet-summarized messages forward from an anchor.
+    CONNECTION_PROFILE_CLASSIC: 4,
 };
 
 // --- Section definitions ---
@@ -323,9 +327,11 @@ function populateCompletionPresets() {
     select.val(settings().completionPreset);
 }
 
-/** Shows the connection profile controls only when the connection-profile builder is selected. */
+/** Shows the connection profile controls only when a connection-profile builder is selected. */
 function toggleConnectionBlock() {
-    $('#ts_connection_block').toggle(settings().prompt_builder === prompt_builders.CONNECTION_PROFILE);
+    const usesProfile = [prompt_builders.CONNECTION_PROFILE, prompt_builders.CONNECTION_PROFILE_CLASSIC]
+        .includes(settings().prompt_builder);
+    $('#ts_connection_block').toggle(usesProfile);
 }
 
 function onConnectionProfileChange() {
@@ -761,10 +767,11 @@ async function summarizeSectionMain(context, section, force, skipWIAN) {
         }
     }
 
-    if (prompt_builders.CONNECTION_PROFILE === settings().prompt_builder) {
+    if ([prompt_builders.CONNECTION_PROFILE, prompt_builders.CONNECTION_PROFILE_CLASSIC].includes(settings().prompt_builder)) {
         try {
             inApiCall = true;
-            const result = await summarizeSectionViaProfile(context, section, prompt);
+            const wholeChat = settings().prompt_builder === prompt_builders.CONNECTION_PROFILE_CLASSIC;
+            const result = await summarizeSectionViaProfile(context, section, prompt, wholeChat);
 
             if (!result) {
                 if (force) {
@@ -1059,16 +1066,23 @@ async function buildSummarySystemPrompt(ctx, context, previousSummary, contextSi
 
 /**
  * Builds the summary chat-completion message array:
- * system (character card + player persona + author's note + world info + previous summary) + as many unsummarized
+ * system (character card + player persona + author's note + world info + previous summary) + as many
  * chat messages as fit the context budget + the section's summarize prompt as the final message.
  * The summarize prompt ends the array as a USER turn: standard chat-completion backends always add
  * a generation prompt, so a trailing assistant message would render as a completed turn and the
  * model would emit an end token immediately (dies after 1 token).
+ *
+ * Two message-fill strategies:
+ *  - incremental (default): forward-fill from the first unsummarized message, so each run consumes
+ *    the OLDEST pending messages and the next run resumes where this one stopped.
+ *  - wholeChat (Classic-style): fill the MOST RECENT messages that fit (backward from the end) and
+ *    re-summarize the whole chat each run. The summary anchors at the newest message kept.
+ *
+ * @param {boolean} wholeChat Use the Classic-style whole-chat fill instead of the unsummarized window
  */
-async function buildSummaryMessages(ctx, context, section, prompt, conn) {
+async function buildSummaryMessages(ctx, context, section, prompt, conn, wholeChat = false) {
     const latestMemory = getLatestMemoryFromChat(context.chat);
     const previousSummary = latestMemory[section] || '';
-    const latestSummaryIndex = getIndexOfLatestChatSummary(context.chat, section);
     const authorsNote = settings().SkipWIAN ? null : getAuthorsNote(ctx);
     const system = await buildSummarySystemPrompt(ctx, context, previousSummary, conn.contextSize, authorsNote);
     const instruction = { role: 'user', content: prompt };
@@ -1087,29 +1101,52 @@ async function buildSummaryMessages(ctx, context, section, prompt, conn) {
     // Exclude the latest message (mirrors the raw builder: the summary anchors at length - 2).
     const chat = context.chat.slice(0, -1);
     const included = [];
-    let latestUsedMessage = null;
+    let lastUsedIndex = -1;
 
-    // Forward-fill from the first unsummarized message: summarization consumes the OLDEST pending
-    // messages first, so the next run picks up where this one stopped.
-    for (let index = latestSummaryIndex + 1; index < chat.length; index++) {
-        const message = chat[index];
-        if (!message) break;
-        if (message.is_system || !message.mes) continue;
+    if (wholeChat) {
+        // Classic-style: take the most recent messages that fit, walking backward from the end. The
+        // newest message kept anchors the stored summary, and the whole chat is re-summarized each
+        // run (no unsummarized-window tracking).
+        for (let index = chat.length - 1; index >= 0; index--) {
+            const message = chat[index];
+            if (!message || message.is_system || !message.mes) continue;
 
-        const content = `${message.name}:\n${message.mes}`;
-        const cost = await countSourceTokens(content) + PER_MESSAGE_OVERHEAD;
-        if (used + cost > budget) break;
+            const content = `${message.name}:\n${message.mes}`;
+            const cost = await countSourceTokens(content) + PER_MESSAGE_OVERHEAD;
+            if (included.length > 0 && used + cost > budget) break;
 
-        used += cost;
-        included.push({ role: message.is_user ? 'user' : 'assistant', content });
-        latestUsedMessage = message;
+            used += cost;
+            included.unshift({ role: message.is_user ? 'user' : 'assistant', content });
+            if (lastUsedIndex === -1) lastUsedIndex = index;
 
-        if (settings().maxMessagesPerRequest > 0 && included.length >= settings().maxMessagesPerRequest) {
-            break;
+            if (settings().maxMessagesPerRequest > 0 && included.length >= settings().maxMessagesPerRequest) {
+                break;
+            }
         }
-    }
+    } else {
+        // Incremental: forward-fill from the first unsummarized message so the next run resumes after
+        // the window this one stopped at.
+        const latestSummaryIndex = getIndexOfLatestChatSummary(context.chat, section);
+        let latestUsedMessage = null;
+        for (let index = latestSummaryIndex + 1; index < chat.length; index++) {
+            const message = chat[index];
+            if (!message) break;
+            if (message.is_system || !message.mes) continue;
 
-    const lastUsedIndex = context.chat.indexOf(latestUsedMessage);
+            const content = `${message.name}:\n${message.mes}`;
+            const cost = await countSourceTokens(content) + PER_MESSAGE_OVERHEAD;
+            if (used + cost > budget) break;
+
+            used += cost;
+            included.push({ role: message.is_user ? 'user' : 'assistant', content });
+            latestUsedMessage = message;
+
+            if (settings().maxMessagesPerRequest > 0 && included.length >= settings().maxMessagesPerRequest) {
+                break;
+            }
+        }
+        lastUsedIndex = context.chat.indexOf(latestUsedMessage);
+    }
 
     const messages = [];
     if (system) messages.push({ role: 'system', content: system });
@@ -1167,13 +1204,14 @@ async function sendSummaryRequest(ctx, conn, messages) {
  * @param {object} context SillyTavern context snapshot
  * @param {string} section Section name
  * @param {string} prompt The section's summarize prompt
+ * @param {boolean} wholeChat Classic-style whole-chat fill instead of the unsummarized window
  * @returns {Promise<{summary: string, lastUsedIndex: number}|null>} null when nothing to summarize
  */
-async function summarizeSectionViaProfile(context, section, prompt) {
+async function summarizeSectionViaProfile(context, section, prompt, wholeChat = false) {
     const ctx = getContext();
     const conn = resolveSummaryConnection(ctx);
     const resolvedPrompt = typeof ctx.substituteParams === 'function' ? String(ctx.substituteParams(prompt)) : prompt;
-    const { messages, lastUsedIndex } = await buildSummaryMessages(ctx, context, section, resolvedPrompt, conn);
+    const { messages, lastUsedIndex } = await buildSummaryMessages(ctx, context, section, resolvedPrompt, conn, wholeChat);
 
     if (lastUsedIndex === null || lastUsedIndex === -1) {
         return null;
@@ -1279,6 +1317,7 @@ function setupListeners() {
     $('#ts_prompt_builder_raw_blocking').off('input').on('input', onPromptBuilderInput);
     $('#ts_prompt_builder_raw_non_blocking').off('input').on('input', onPromptBuilderInput);
     $('#ts_prompt_builder_profile').off('input').on('input', onPromptBuilderInput);
+    $('#ts_prompt_builder_profile_classic').off('input').on('input', onPromptBuilderInput);
     $('#ts_connection_profile').off('change').on('change', onConnectionProfileChange);
     $('#ts_completion_preset').off('change').on('change', onCompletionPresetChange);
     $('#ts_connection_context').off('input').on('input', onConnectionContextInput);
