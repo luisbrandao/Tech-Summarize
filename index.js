@@ -663,10 +663,19 @@ async function forceSummarizeSection(section, quiet) {
     const skipWIAN = settings().SkipWIAN;
 
     const label = defaultSectionLabels[section] || section;
+    // The "Please wait" toast is sticky (timeOut: 0); clear it in finally so a thrown summarization
+    // (e.g. an unconfigured connection profile or a backend error) can't leave it stuck on screen.
     const toast = quiet ? jQuery() : toastr.info(`Summarizing ${label}...`, 'Please wait', { timeOut: 0, extendedTimeOut: 0 });
-    const value = await summarizeSectionMain(context, section, true, skipWIAN);
-
-    toastr.clear(toast);
+    let value;
+    try {
+        value = await summarizeSectionMain(context, section, true, skipWIAN);
+    } catch (error) {
+        console.error('Tech-Summarize: summarization failed:', error);
+        toastr.error(String(error?.message || error), `Failed to summarize ${label}`);
+        return '';
+    } finally {
+        toastr.clear(toast);
+    }
 
     if (!value) {
         toastr.warning(`Failed to summarize ${label}`);
@@ -685,16 +694,23 @@ async function forceSummarizeChat(quiet) {
     const context = getContext();
     const skipWIAN = settings().SkipWIAN;
 
+    // Sticky toast (timeOut: 0): clear it in finally so a thrown summarization can't leave it stuck.
     const toast = quiet ? jQuery() : toastr.info('Summarizing all sections...', 'Please wait', { timeOut: 0, extendedTimeOut: 0 });
     const results = [];
 
-    for (const section of summarySections) {
-        const value = await summarizeSectionMain(context, section, true, skipWIAN);
-        if (value) results.push(value);
-        if (isContextChanged(context)) break;
+    try {
+        for (const section of summarySections) {
+            const value = await summarizeSectionMain(context, section, true, skipWIAN);
+            if (value) results.push(value);
+            if (isContextChanged(context)) break;
+        }
+    } catch (error) {
+        console.error('Tech-Summarize: summarization failed:', error);
+        toastr.error(String(error?.message || error), 'Failed to summarize chat');
+        return '';
+    } finally {
+        toastr.clear(toast);
     }
-
-    toastr.clear(toast);
 
     if (results.length === 0) {
         toastr.warning('Failed to summarize chat');
